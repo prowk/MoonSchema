@@ -18,7 +18,7 @@ pub(all) enum ErrorKind {
 } derive(Eq, Debug)
 
 ///| 单条结构化校验错误。
-pub struct ValidationError {
+pub(all) struct ValidationError {
   instance_path : Path
   schema_path : Path
   kind : ErrorKind
