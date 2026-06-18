@@ -14,10 +14,10 @@ keywords are ignored unless they are part of MoonSchema's documented subset.
 - Structured errors with instance path, schema path, error kind, and message
 - Type checks: `null`, `boolean`, `number`, `integer`, `string`, `array`, `object`
 - Value checks: `const`, `enum`
-- Number checks: `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`
+- Number checks: `minimum`, `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `multipleOf`
 - String checks: `minLength`, `maxLength`, `pattern`
-- Array checks: `items`, `minItems`, `maxItems`, `uniqueItems`
-- Object checks: `properties`, `required`, `additionalProperties`
+- Array checks: `items`, `minItems`, `maxItems`, `uniqueItems`, `contains`, `minContains`, `maxContains`
+- Object checks: `properties`, `required`, `additionalProperties`, `minProperties`, `maxProperties`, `propertyNames`, `dependentRequired`
 - Composition: `allOf`, `anyOf`, `oneOf`, `not`
 - Local references: `#` and `#/...` JSON Pointer paths, including `$defs`
 
@@ -75,8 +75,9 @@ keywords report a compact `CombinationFailed` error for `anyOf`, `oneOf`, and
 `not`; `allOf` keeps detailed nested errors.
 
 `$ref` support is intentionally local-only for v0.1. Remote URI loading,
-dynamic anchors, format assertion, unevaluated properties/items, conditional
-keywords, and full metaschema validation are out of scope for the first release.
+dynamic anchors, `format` assertion, `prefixItems`, `unevaluatedProperties`,
+`unevaluatedItems`, conditional keywords, and full metaschema validation are out
+of scope for the first release.
 
 ## Development
 
@@ -86,4 +87,3 @@ moon test
 
 The repository includes focused unit tests for supported keywords, nested error
 paths, local references, and text parsing.
-
