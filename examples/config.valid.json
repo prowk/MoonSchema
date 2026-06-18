@@ -1,0 +1,5 @@
+{
+  "name": "moon-api",
+  "port": 8080,
+  "features": ["cache", "metrics"]
+}

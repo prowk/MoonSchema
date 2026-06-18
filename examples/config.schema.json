@@ -1,0 +1,29 @@
+{
+  "$defs": {
+    "port": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 65535
+    }
+  },
+  "type": "object",
+  "required": ["name", "port", "features"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "port": {
+      "$ref": "#/$defs/port"
+    },
+    "features": {
+      "type": "array",
+      "items": {
+        "enum": ["cache", "metrics", "tracing"]
+      },
+      "uniqueItems": true
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Moon API",
+  "port": 0,
+  "features": ["cache", "cache"],
+  "debug": true
+}
