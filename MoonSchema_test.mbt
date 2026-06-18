@@ -46,3 +46,22 @@ test "type keyword supports union types" {
   assert_true(@MoonSchema.is_valid(schema, "ok".to_json()))
   assert_false(@MoonSchema.is_valid(schema, false.to_json()))
 }
+
+///|
+test "const keyword requires exact JSON value" {
+  let schema : Json = { "const": { "role": "admin" } }
+  assert_true(@MoonSchema.is_valid(schema, { "role": "admin" }))
+  let errors = @MoonSchema.validate(schema, { "role": "user" })
+  inspect(errors.length(), content="1")
+  assert_true(errors[0].kind == @MoonSchema.ErrorKind::ConstMismatch)
+  inspect(errors[0].schema_path.to_pointer(), content="#const")
+}
+
+///|
+test "enum keyword accepts one of options" {
+  let schema : Json = { "enum": ["red", "green", "blue"] }
+  assert_true(@MoonSchema.is_valid(schema, "green".to_json()))
+  let errors = @MoonSchema.validate(schema, "yellow".to_json())
+  inspect(errors.length(), content="1")
+  assert_true(errors[0].kind == @MoonSchema.ErrorKind::EnumMismatch)
+}

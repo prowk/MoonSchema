@@ -41,6 +41,12 @@ fn validate_at(
       if rules.get("type") is Some(type_rule) {
         check_type(type_rule, instance, instance_path, schema_path.field("type"), errors)
       }
+      if rules.get("const") is Some(expected) {
+        check_const(expected, instance, instance_path, schema_path.field("const"), errors)
+      }
+      if rules.get("enum") is Some(options) {
+        check_enum(options, instance, instance_path, schema_path.field("enum"), errors)
+      }
     }
     _ =>
       errors.push(
@@ -49,6 +55,59 @@ fn validate_at(
           schema_path,
           InvalidSchema,
           "schema must be an object or a boolean",
+        ),
+      )
+  }
+}
+
+///| 校验 `const` 关键字。
+fn check_const(
+  expected : Json,
+  instance : Json,
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  if instance == expected {
+    return
+  }
+  errors.push(
+    ValidationError::new(
+      instance_path,
+      schema_path,
+      ConstMismatch,
+      "value does not equal the required constant",
+    ),
+  )
+}
+
+///| 校验 `enum` 关键字。
+fn check_enum(
+  options : Json,
+  instance : Json,
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  match options {
+    Array(values) =>
+      if !values.any(value => value == instance) {
+        errors.push(
+          ValidationError::new(
+            instance_path,
+            schema_path,
+            EnumMismatch,
+            "value is not one of the allowed enum values",
+          ),
+        )
+      }
+    _ =>
+      errors.push(
+        ValidationError::new(
+          instance_path,
+          schema_path,
+          InvalidSchema,
+          "`enum` must be an array",
         ),
       )
   }
