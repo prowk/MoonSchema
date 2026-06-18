@@ -182,3 +182,38 @@ test "additionalProperties can reject or validate extras" {
   inspect(typed_extra[0].instance_path.to_pointer(), content="#score")
   inspect(typed_extra[0].schema_path.to_pointer(), content="#additionalProperties/type")
 }
+
+///|
+test "allOf validates every subschema" {
+  let schema : Json = {
+    "allOf": [
+      { "type": "integer" },
+      { "minimum": 1.0 },
+      { "maximum": 3.0 },
+    ],
+  }
+  assert_true(@MoonSchema.is_valid(schema, 2.0.to_json()))
+  let errors = @MoonSchema.validate(schema, 4.0.to_json())
+  inspect(errors.length(), content="1")
+  assert_true(errors[0].kind == @MoonSchema.ErrorKind::NumberTooLarge)
+  inspect(errors[0].schema_path.to_pointer(), content="#allOf/2/maximum")
+}
+
+///|
+test "anyOf oneOf and not combinations" {
+  let any_schema : Json = {
+    "anyOf": [{ "type": "string" }, { "type": "integer" }],
+  }
+  assert_true(@MoonSchema.is_valid(any_schema, "ok".to_json()))
+  assert_false(@MoonSchema.is_valid(any_schema, true.to_json()))
+
+  let one_schema : Json = {
+    "oneOf": [{ "type": "number" }, { "type": "integer" }],
+  }
+  assert_true(@MoonSchema.is_valid(one_schema, 1.5.to_json()))
+  assert_false(@MoonSchema.is_valid(one_schema, 1.0.to_json()))
+
+  let not_schema : Json = { "not": { "type": "null" } }
+  assert_true(@MoonSchema.is_valid(not_schema, "value".to_json()))
+  assert_false(@MoonSchema.is_valid(not_schema, null))
+}

@@ -51,6 +51,7 @@ fn validate_at(
       check_string_length(rules, instance, instance_path, schema_path, errors)
       check_array_rules(rules, instance, instance_path, schema_path, errors)
       check_object_rules(rules, instance, instance_path, schema_path, errors)
+      check_combinations(rules, instance, instance_path, schema_path, errors)
     }
     _ =>
       errors.push(
@@ -60,6 +61,122 @@ fn validate_at(
           InvalidSchema,
           "schema must be an object or a boolean",
         ),
+      )
+  }
+}
+
+///| 校验组合关键字。
+fn check_combinations(
+  rules : Map[String, Json],
+  instance : Json,
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  if rules.get("allOf") is Some(items) {
+    check_all_of(items, instance, instance_path, schema_path.field("allOf"), errors)
+  }
+  if rules.get("anyOf") is Some(items) {
+    check_any_of(items, instance, instance_path, schema_path.field("anyOf"), errors)
+  }
+  if rules.get("oneOf") is Some(items) {
+    check_one_of(items, instance, instance_path, schema_path.field("oneOf"), errors)
+  }
+  if rules.get("not") is Some(item) {
+    let nested : Array[ValidationError] = []
+    validate_at(item, instance, instance_path, schema_path.field("not"), nested)
+    if nested.is_empty() {
+      errors.push(
+        ValidationError::new(
+          instance_path,
+          schema_path.field("not"),
+          CombinationFailed,
+          "`not` schema matched the instance",
+        ),
+      )
+    }
+  }
+}
+
+///| 校验 `allOf`。
+fn check_all_of(
+  items_rule : Json,
+  instance : Json,
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  match items_rule {
+    Array(items) =>
+      items.eachi((index, item) => {
+        validate_at(item, instance, instance_path, schema_path.index(index), errors)
+      })
+    _ =>
+      errors.push(
+        ValidationError::new(instance_path, schema_path, InvalidSchema, "`allOf` must be an array"),
+      )
+  }
+}
+
+///| 校验 `anyOf`。
+fn check_any_of(
+  items_rule : Json,
+  instance : Json,
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  match items_rule {
+    Array(items) => {
+      if items.any(item => validate(item, instance).is_empty()) {
+        return
+      }
+      errors.push(
+        ValidationError::new(
+          instance_path,
+          schema_path,
+          CombinationFailed,
+          "instance does not match any schema in anyOf",
+        ),
+      )
+    }
+    _ =>
+      errors.push(
+        ValidationError::new(instance_path, schema_path, InvalidSchema, "`anyOf` must be an array"),
+      )
+  }
+}
+
+///| 校验 `oneOf`。
+fn check_one_of(
+  items_rule : Json,
+  instance : Json,
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  match items_rule {
+    Array(items) => {
+      let mut matches = 0
+      items.each(item => {
+        if validate(item, instance).is_empty() {
+          matches += 1
+        }
+      })
+      if matches != 1 {
+        errors.push(
+          ValidationError::new(
+            instance_path,
+            schema_path,
+            CombinationFailed,
+            "instance must match exactly one schema in oneOf",
+          ),
+        )
+      }
+    }
+    _ =>
+      errors.push(
+        ValidationError::new(instance_path, schema_path, InvalidSchema, "`oneOf` must be an array"),
       )
   }
 }
