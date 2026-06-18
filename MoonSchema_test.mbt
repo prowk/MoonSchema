@@ -101,3 +101,35 @@ test "string length bounds" {
   assert_true(long[0].kind == @MoonSchema.ErrorKind::StringTooLong)
   inspect(long[0].schema_path.to_pointer(), content="#maxLength")
 }
+
+///|
+test "array items are recursively validated" {
+  let schema : Json = { "type": "array", "items": { "type": "integer" } }
+  assert_true(@MoonSchema.is_valid(schema, [1.0, 2.0, 3.0]))
+  let errors = @MoonSchema.validate(schema, [1.0, "two", 3.0])
+  inspect(errors.length(), content="1")
+  assert_true(errors[0].kind == @MoonSchema.ErrorKind::TypeMismatch)
+  inspect(errors[0].instance_path.to_pointer(), content="#1")
+  inspect(errors[0].schema_path.to_pointer(), content="#items/type")
+}
+
+///|
+test "array length and uniqueness constraints" {
+  let schema : Json = {
+    "type": "array",
+    "minItems": 2.0,
+    "maxItems": 3.0,
+    "uniqueItems": true,
+  }
+  assert_true(@MoonSchema.is_valid(schema, ["a", "b"]))
+  let too_short = @MoonSchema.validate(schema, ["a"])
+  inspect(too_short.length(), content="1")
+  assert_true(too_short[0].kind == @MoonSchema.ErrorKind::ArrayTooShort)
+  let too_long = @MoonSchema.validate(schema, ["a", "b", "c", "d"])
+  inspect(too_long.length(), content="1")
+  assert_true(too_long[0].kind == @MoonSchema.ErrorKind::ArrayTooLong)
+  let duplicate = @MoonSchema.validate(schema, ["a", "b", "a"])
+  inspect(duplicate.length(), content="1")
+  assert_true(duplicate[0].kind == @MoonSchema.ErrorKind::UniqueItemsMismatch)
+  inspect(duplicate[0].instance_path.to_pointer(), content="#2")
+}

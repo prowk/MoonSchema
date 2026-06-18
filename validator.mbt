@@ -49,6 +49,7 @@ fn validate_at(
       }
       check_number_bounds(rules, instance, instance_path, schema_path, errors)
       check_string_length(rules, instance, instance_path, schema_path, errors)
+      check_array_rules(rules, instance, instance_path, schema_path, errors)
     }
     _ =>
       errors.push(
@@ -57,6 +58,95 @@ fn validate_at(
           schema_path,
           InvalidSchema,
           "schema must be an object or a boolean",
+        ),
+      )
+  }
+}
+
+///| 校验数组相关关键字。
+fn check_array_rules(
+  rules : Map[String, Json],
+  instance : Json,
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  guard instance is Array(items) else { return }
+  if rules.get("minItems") is Some(limit) {
+    check_length_limit(
+      limit,
+      items.length(),
+      instance_path,
+      schema_path.field("minItems"),
+      ArrayTooShort,
+      current => limit_value => current < limit_value,
+      "`minItems` must be a non-negative integer",
+      "array has fewer items than minItems",
+      errors,
+    )
+  }
+  if rules.get("maxItems") is Some(limit) {
+    check_length_limit(
+      limit,
+      items.length(),
+      instance_path,
+      schema_path.field("maxItems"),
+      ArrayTooLong,
+      current => limit_value => current > limit_value,
+      "`maxItems` must be a non-negative integer",
+      "array has more items than maxItems",
+      errors,
+    )
+  }
+  if rules.get("uniqueItems") is Some(flag) {
+    check_unique_items(flag, items, instance_path, schema_path.field("uniqueItems"), errors)
+  }
+  if rules.get("items") is Some(item_schema) {
+    items.eachi((index, item) => {
+      validate_at(
+        item_schema,
+        item,
+        instance_path.index(index),
+        schema_path.field("items"),
+        errors,
+      )
+    })
+  }
+}
+
+///| 校验 `uniqueItems`。
+fn check_unique_items(
+  flag : Json,
+  items : Array[Json],
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  match flag {
+    True =>
+      for i = 0; i < items.length(); i = i + 1 {
+        for j = i + 1; j < items.length(); j = j + 1 {
+          if items[i] == items[j] {
+            errors.push(
+              ValidationError::new(
+                instance_path.index(j),
+                schema_path,
+                UniqueItemsMismatch,
+                "array item duplicates a previous item",
+              ),
+            )
+            return
+          }
+        }
+      }
+    False => ()
+    _ =>
+      errors.push(
+        ValidationError::new(
+          instance_path,
+          schema_path,
+          InvalidSchema,
+          "`uniqueItems` must be a boolean",
         ),
       )
   }
