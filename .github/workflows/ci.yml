@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: moon test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install MoonBit
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.moon/lib"
+          curl -fsSL https://cli.moonbitlang.com/binaries/latest/moonbit-linux-x86_64.zip -o /tmp/moonbit.zip
+          unzip -q /tmp/moonbit.zip -d "$HOME/.moon"
+          curl -fsSL https://cli.moonbitlang.com/cores/core-latest.zip -o /tmp/core.zip
+          unzip -q /tmp/core.zip -d "$HOME/.moon/lib"
+          echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
+
+      - name: Bundle core
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.moon/bin:$PATH"
+          cd "$HOME/.moon/lib/core"
+          moon bundle --warn-list -a --all
+          moon bundle --warn-list -a --target wasm-gc --quiet
+
+      - name: Run tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          moon test
