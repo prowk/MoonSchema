@@ -65,3 +65,25 @@ test "enum keyword accepts one of options" {
   inspect(errors.length(), content="1")
   assert_true(errors[0].kind == @MoonSchema.ErrorKind::EnumMismatch)
 }
+
+///|
+test "number minimum and maximum bounds" {
+  let schema : Json = { "type": "number", "minimum": 0.0, "maximum": 10.0 }
+  assert_true(@MoonSchema.is_valid(schema, 5.0.to_json()))
+  let low = @MoonSchema.validate(schema, (-1.0).to_json())
+  inspect(low.length(), content="1")
+  assert_true(low[0].kind == @MoonSchema.ErrorKind::NumberTooSmall)
+  inspect(low[0].schema_path.to_pointer(), content="#minimum")
+  let high = @MoonSchema.validate(schema, 11.0.to_json())
+  inspect(high.length(), content="1")
+  assert_true(high[0].kind == @MoonSchema.ErrorKind::NumberTooLarge)
+  inspect(high[0].schema_path.to_pointer(), content="#maximum")
+}
+
+///|
+test "exclusive number bounds" {
+  let schema : Json = { "exclusiveMinimum": 0.0, "exclusiveMaximum": 10.0 }
+  assert_true(@MoonSchema.is_valid(schema, 5.0.to_json()))
+  assert_false(@MoonSchema.is_valid(schema, 0.0.to_json()))
+  assert_false(@MoonSchema.is_valid(schema, 10.0.to_json()))
+}

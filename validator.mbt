@@ -47,6 +47,7 @@ fn validate_at(
       if rules.get("enum") is Some(options) {
         check_enum(options, instance, instance_path, schema_path.field("enum"), errors)
       }
+      check_number_bounds(rules, instance, instance_path, schema_path, errors)
     }
     _ =>
       errors.push(
@@ -56,6 +57,88 @@ fn validate_at(
           InvalidSchema,
           "schema must be an object or a boolean",
         ),
+      )
+  }
+}
+
+///| 校验数字范围关键字。
+fn check_number_bounds(
+  rules : Map[String, Json],
+  instance : Json,
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  guard instance is Number(value, ..) else { return }
+  if rules.get("minimum") is Some(limit) {
+    check_number_limit(
+      limit,
+      instance_path,
+      schema_path.field("minimum"),
+      NumberTooSmall,
+      limit => value < limit,
+      "`minimum` must be a number",
+      "number is smaller than the allowed minimum",
+      errors,
+    )
+  }
+  if rules.get("maximum") is Some(limit) {
+    check_number_limit(
+      limit,
+      instance_path,
+      schema_path.field("maximum"),
+      NumberTooLarge,
+      limit => value > limit,
+      "`maximum` must be a number",
+      "number is larger than the allowed maximum",
+      errors,
+    )
+  }
+  if rules.get("exclusiveMinimum") is Some(limit) {
+    check_number_limit(
+      limit,
+      instance_path,
+      schema_path.field("exclusiveMinimum"),
+      NumberTooSmall,
+      limit => value <= limit,
+      "`exclusiveMinimum` must be a number",
+      "number is not greater than the exclusive minimum",
+      errors,
+    )
+  }
+  if rules.get("exclusiveMaximum") is Some(limit) {
+    check_number_limit(
+      limit,
+      instance_path,
+      schema_path.field("exclusiveMaximum"),
+      NumberTooLarge,
+      limit => value >= limit,
+      "`exclusiveMaximum` must be a number",
+      "number is not smaller than the exclusive maximum",
+      errors,
+    )
+  }
+}
+
+///| 提取数字边界并执行比较。
+fn check_number_limit(
+  limit_rule : Json,
+  instance_path : Path,
+  schema_path : Path,
+  kind : ErrorKind,
+  violates : (Double) -> Bool,
+  invalid_message : String,
+  message : String,
+  errors : Array[ValidationError],
+) -> Unit {
+  match limit_rule {
+    Number(limit, ..) =>
+      if violates(limit) {
+        errors.push(ValidationError::new(instance_path, schema_path, kind, message))
+      }
+    _ =>
+      errors.push(
+        ValidationError::new(instance_path, schema_path, InvalidSchema, invalid_message),
       )
   }
 }
