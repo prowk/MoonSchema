@@ -89,6 +89,16 @@ test "exclusive number bounds" {
 }
 
 ///|
+test "multipleOf validates numeric divisibility" {
+  let schema : Json = { "type": "number", "multipleOf": 0.5 }
+  assert_true(@MoonSchema.is_valid(schema, 2.5.to_json()))
+  let errors = @MoonSchema.validate(schema, 2.25.to_json())
+  inspect(errors.length(), content="1")
+  assert_true(errors[0].kind == @MoonSchema.ErrorKind::MultipleOfMismatch)
+  inspect(errors[0].schema_path.to_pointer(), content="#multipleOf")
+}
+
+///|
 test "string length bounds" {
   let schema : Json = { "type": "string", "minLength": 2.0, "maxLength": 4.0 }
   assert_true(@MoonSchema.is_valid(schema, "abc".to_json()))
@@ -145,6 +155,25 @@ test "array length and uniqueness constraints" {
 }
 
 ///|
+test "contains validates matching item counts" {
+  let schema : Json = {
+    "type": "array",
+    "contains": { "type": "integer", "minimum": 10.0 },
+    "minContains": 1.0,
+    "maxContains": 2.0,
+  }
+  assert_true(@MoonSchema.is_valid(schema, [1.0, 10.0, 20.0]))
+  let missing = @MoonSchema.validate(schema, [1.0, 2.0, 3.0])
+  inspect(missing.length(), content="1")
+  assert_true(missing[0].kind == @MoonSchema.ErrorKind::ContainsMismatch)
+  inspect(missing[0].schema_path.to_pointer(), content="#contains")
+  let too_many = @MoonSchema.validate(schema, [10.0, 11.0, 12.0])
+  inspect(too_many.length(), content="1")
+  assert_true(too_many[0].kind == @MoonSchema.ErrorKind::ContainsMismatch)
+  inspect(too_many[0].schema_path.to_pointer(), content="#maxContains")
+}
+
+///|
 test "object properties and required are validated" {
   let schema : Json = {
     "type": "object",
@@ -191,6 +220,41 @@ test "additionalProperties can reject or validate extras" {
   assert_true(typed_extra[0].kind == @MoonSchema.ErrorKind::TypeMismatch)
   inspect(typed_extra[0].instance_path.to_pointer(), content="#score")
   inspect(typed_extra[0].schema_path.to_pointer(), content="#additionalProperties/type")
+}
+
+///|
+test "object property counts names and dependencies" {
+  let schema : Json = {
+    "type": "object",
+    "minProperties": 2.0,
+    "maxProperties": 3.0,
+    "propertyNames": { "pattern": "^[a-z_]+$" },
+    "dependentRequired": {
+      "credit_card": ["billing_address"],
+    },
+  }
+  assert_true(@MoonSchema.is_valid(schema, {
+    "credit_card": "4111",
+    "billing_address": "Moon Street",
+  }))
+  let too_small = @MoonSchema.validate(schema, { "name": "Ada" })
+  inspect(too_small.length(), content="1")
+  assert_true(too_small[0].kind == @MoonSchema.ErrorKind::ObjectTooSmall)
+  let bad_name = @MoonSchema.validate(schema, {
+    "credit_card": "4111",
+    "billing_address": "Moon Street",
+    "billing-address": "Moon Street",
+  })
+  inspect(bad_name.length(), content="1")
+  assert_true(bad_name[0].kind == @MoonSchema.ErrorKind::PatternMismatch)
+  inspect(bad_name[0].instance_path.to_pointer(), content="#billing-address")
+  let missing_dependency = @MoonSchema.validate(schema, {
+    "credit_card": "4111",
+    "name": "Ada",
+  })
+  inspect(missing_dependency.length(), content="1")
+  assert_true(missing_dependency[0].kind == @MoonSchema.ErrorKind::MissingRequired)
+  inspect(missing_dependency[0].instance_path.to_pointer(), content="#billing_address")
 }
 
 ///|

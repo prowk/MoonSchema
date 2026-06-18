@@ -5,14 +5,18 @@ pub(all) enum ErrorKind {
   EnumMismatch
   NumberTooSmall
   NumberTooLarge
+  MultipleOfMismatch
   StringTooShort
   StringTooLong
   PatternMismatch
   ArrayTooShort
   ArrayTooLong
   UniqueItemsMismatch
+  ContainsMismatch
   MissingRequired
   AdditionalProperty
+  ObjectTooSmall
+  ObjectTooLarge
   CombinationFailed
   RefNotFound
   InvalidSchema

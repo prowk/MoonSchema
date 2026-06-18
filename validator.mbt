@@ -329,11 +329,31 @@ fn check_object_rules(
         )
     }
   }
-  if rules.get("required") is Some(required_rule) {
-    check_required(required_rule, fields, instance_path, schema_path.field("required"), errors)
-  }
-  if rules.get("additionalProperties") is Some(additional_rule) {
-    check_additional_properties(
+    if rules.get("required") is Some(required_rule) {
+      check_required(required_rule, fields, instance_path, schema_path.field("required"), errors)
+    }
+    check_property_count(rules, fields, instance_path, schema_path, errors)
+    if rules.get("propertyNames") is Some(name_schema) {
+      check_property_names(
+        root_schema,
+        name_schema,
+        fields,
+        instance_path,
+        schema_path.field("propertyNames"),
+        errors,
+      )
+    }
+    if rules.get("dependentRequired") is Some(dependencies) {
+      check_dependent_required(
+        dependencies,
+        fields,
+        instance_path,
+        schema_path.field("dependentRequired"),
+        errors,
+      )
+    }
+    if rules.get("additionalProperties") is Some(additional_rule) {
+      check_additional_properties(
       root_schema,
       additional_rule,
       fields,
@@ -342,6 +362,83 @@ fn check_object_rules(
       schema_path.field("additionalProperties"),
       errors,
     )
+  }
+}
+
+///| 校验对象属性数量。
+fn check_property_count(
+  rules : Map[String, Json],
+  fields : Map[String, Json],
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  if rules.get("minProperties") is Some(limit) {
+    check_length_limit(
+      limit,
+      fields.length(),
+      instance_path,
+      schema_path.field("minProperties"),
+      ObjectTooSmall,
+      current => limit_value => current < limit_value,
+      "`minProperties` must be a non-negative integer",
+      "object has fewer properties than minProperties",
+      errors,
+    )
+  }
+  if rules.get("maxProperties") is Some(limit) {
+    check_length_limit(
+      limit,
+      fields.length(),
+      instance_path,
+      schema_path.field("maxProperties"),
+      ObjectTooLarge,
+      current => limit_value => current > limit_value,
+      "`maxProperties` must be a non-negative integer",
+      "object has more properties than maxProperties",
+      errors,
+    )
+  }
+}
+
+///| 校验 `propertyNames`。
+fn check_property_names(
+  root_schema : Json,
+  name_schema : Json,
+  fields : Map[String, Json],
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  fields.each((name, _value) => {
+    validate_at(root_schema, name_schema, name.to_json(), instance_path.field(name), schema_path, errors)
+  })
+}
+
+///| 校验 `dependentRequired`。
+fn check_dependent_required(
+  dependencies : Json,
+  fields : Map[String, Json],
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  match dependencies {
+    Object(entries) =>
+      entries.each((name, required_rule) => {
+        if fields.contains(name) {
+          check_required(required_rule, fields, instance_path, schema_path.field(name), errors)
+        }
+      })
+    _ =>
+      errors.push(
+        ValidationError::new(
+          instance_path,
+          schema_path,
+          InvalidSchema,
+          "`dependentRequired` must be an object",
+        ),
+      )
   }
 }
 
@@ -466,10 +563,13 @@ fn check_array_rules(
       errors,
     )
   }
-  if rules.get("uniqueItems") is Some(flag) {
-    check_unique_items(flag, items, instance_path, schema_path.field("uniqueItems"), errors)
-  }
-  if rules.get("items") is Some(item_schema) {
+    if rules.get("uniqueItems") is Some(flag) {
+      check_unique_items(flag, items, instance_path, schema_path.field("uniqueItems"), errors)
+    }
+    if rules.get("contains") is Some(contains_schema) {
+      check_contains(root_schema, contains_schema, rules, items, instance_path, schema_path, errors)
+    }
+    if rules.get("items") is Some(item_schema) {
     items.eachi((index, item) => {
       validate_at(
         root_schema,
@@ -480,6 +580,76 @@ fn check_array_rules(
         errors,
       )
     })
+  }
+}
+
+///| 校验 `contains` 及其数量边界。
+fn check_contains(
+  root_schema : Json,
+  contains_schema : Json,
+  rules : Map[String, Json],
+  items : Array[Json],
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  let mut matches = 0
+  items.each(item => {
+    if validate_with_root(root_schema, contains_schema, item).is_empty() {
+      matches += 1
+    }
+  })
+  let min_contains = match rules.get("minContains") {
+    Some(rule) =>
+      match non_negative_integer(rule) {
+        Some(value) => value
+        None => {
+          errors.push(
+            ValidationError::new(
+              instance_path,
+              schema_path.field("minContains"),
+              InvalidSchema,
+              "`minContains` must be a non-negative integer",
+            ),
+          )
+          1
+        }
+      }
+    None => 1
+  }
+  if matches < min_contains {
+    errors.push(
+      ValidationError::new(
+        instance_path,
+        schema_path.field("contains"),
+        ContainsMismatch,
+        "array does not contain enough matching items",
+      ),
+    )
+  }
+  if rules.get("maxContains") is Some(rule) {
+    match non_negative_integer(rule) {
+      Some(max_contains) =>
+        if matches > max_contains {
+          errors.push(
+            ValidationError::new(
+              instance_path,
+              schema_path.field("maxContains"),
+              ContainsMismatch,
+              "array contains too many matching items",
+            ),
+          )
+        }
+      None =>
+        errors.push(
+          ValidationError::new(
+            instance_path,
+            schema_path.field("maxContains"),
+            InvalidSchema,
+            "`maxContains` must be a non-negative integer",
+          ),
+        )
+    }
   }
 }
 
@@ -699,6 +869,53 @@ fn check_number_bounds(
       "number is not smaller than the exclusive maximum",
       errors,
     )
+  }
+  if rules.get("multipleOf") is Some(divisor_rule) {
+    check_multiple_of(divisor_rule, value, instance_path, schema_path.field("multipleOf"), errors)
+  }
+}
+
+///| 校验 `multipleOf`。
+fn check_multiple_of(
+  divisor_rule : Json,
+  value : Double,
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  match divisor_rule {
+    Number(divisor, ..) =>
+      if divisor <= 0.0 {
+        errors.push(
+          ValidationError::new(
+            instance_path,
+            schema_path,
+            InvalidSchema,
+            "`multipleOf` must be greater than zero",
+          ),
+        )
+      } else {
+        let quotient = value / divisor
+        if quotient != @double.trunc(quotient) {
+          errors.push(
+            ValidationError::new(
+              instance_path,
+              schema_path,
+              MultipleOfMismatch,
+              "number is not a multiple of multipleOf",
+            ),
+          )
+        }
+      }
+    _ =>
+      errors.push(
+        ValidationError::new(
+          instance_path,
+          schema_path,
+          InvalidSchema,
+          "`multipleOf` must be a number",
+        ),
+      )
   }
 }
 
