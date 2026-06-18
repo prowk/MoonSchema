@@ -17,10 +17,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$HOME/.moon/lib"
-          curl -fsSL https://cli.moonbitlang.com/binaries/latest/moonbit-linux-x86_64.zip -o /tmp/moonbit.zip
-          unzip -q /tmp/moonbit.zip -d "$HOME/.moon"
-          curl -fsSL https://cli.moonbitlang.com/cores/core-latest.zip -o /tmp/core.zip
-          unzip -q /tmp/core.zip -d "$HOME/.moon/lib"
+          curl -fsSL https://cli.moonbitlang.com/binaries/latest/moonbit-linux-x86_64.tar.gz -o /tmp/moonbit.tar.gz
+          tar xf /tmp/moonbit.tar.gz --directory="$HOME/.moon"
+          curl -fsSL https://cli.moonbitlang.com/cores/core-latest.tar.gz -o /tmp/core.tar.gz
+          tar xf /tmp/core.tar.gz --directory="$HOME/.moon/lib"
+          chmod +x "$HOME/.moon/bin/"*
+          chmod +x "$HOME/.moon/bin/internal/tcc"
           echo "$HOME/.moon/bin" >> "$GITHUB_PATH"
 
       - name: Bundle core
