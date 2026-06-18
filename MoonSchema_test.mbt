@@ -217,3 +217,45 @@ test "anyOf oneOf and not combinations" {
   assert_true(@MoonSchema.is_valid(not_schema, "value".to_json()))
   assert_false(@MoonSchema.is_valid(not_schema, null))
 }
+
+///|
+test "local refs resolve definitions" {
+  let schema : Json = {
+    "$defs": {
+      "positiveInteger": { "type": "integer", "minimum": 1.0 },
+      "namedUser": {
+        "type": "object",
+        "required": ["name"],
+        "properties": { "name": { "type": "string", "minLength": 1.0 } },
+      },
+    },
+    "type": "object",
+    "required": ["user", "score"],
+    "properties": {
+      "user": { "$ref": "#/$defs/namedUser" },
+      "score": { "$ref": "#/$defs/positiveInteger" },
+    },
+  }
+  assert_true(@MoonSchema.is_valid(schema, {
+    "user": { "name": "Ada" },
+    "score": 3.0,
+  }))
+  let errors = @MoonSchema.validate(schema, {
+    "user": { "name": "" },
+    "score": 0.0,
+  })
+  inspect(errors.length(), content="2")
+  assert_true(errors[0].kind == @MoonSchema.ErrorKind::StringTooShort)
+  assert_true(errors[1].kind == @MoonSchema.ErrorKind::NumberTooSmall)
+  inspect(errors[0].schema_path.to_pointer(), content="#properties/user/$ref/properties/name/minLength")
+  inspect(errors[1].schema_path.to_pointer(), content="#properties/score/$ref/minimum")
+}
+
+///|
+test "unresolved ref reports structured error" {
+  let schema : Json = { "$ref": "#/$defs/missing" }
+  let errors = @MoonSchema.validate(schema, null)
+  inspect(errors.length(), content="1")
+  assert_true(errors[0].kind == @MoonSchema.ErrorKind::RefNotFound)
+  inspect(errors[0].schema_path.to_pointer(), content="#$ref")
+}

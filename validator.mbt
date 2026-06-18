@@ -8,8 +8,13 @@ pub type ValidationResult = Array[ValidationError]
 
 ///| 校验实例是否符合 schema，返回全部可收集的错误。
 pub fn validate(schema : Json, instance : Json) -> ValidationResult {
+  validate_with_root(schema, schema, instance)
+}
+
+///| 使用指定根 schema 校验子 schema。
+fn validate_with_root(root_schema : Json, schema : Json, instance : Json) -> ValidationResult {
   let errors : Array[ValidationError] = []
-  validate_at(schema, instance, Path::root(), Path::root(), errors)
+  validate_at(root_schema, schema, instance, Path::root(), Path::root(), errors)
   errors
 }
 
@@ -20,6 +25,7 @@ pub fn is_valid(schema : Json, instance : Json) -> Bool {
 
 ///| 在指定路径下递归校验。
 fn validate_at(
+  root_schema : Json,
   schema : Json,
   instance : Json,
   instance_path : Path,
@@ -38,6 +44,16 @@ fn validate_at(
         ),
       )
     Object(rules) => {
+      if rules.get("$ref") is Some(ref_rule) {
+        check_ref(
+          root_schema,
+          ref_rule,
+          instance,
+          instance_path,
+          schema_path.field("$ref"),
+          errors,
+        )
+      }
       if rules.get("type") is Some(type_rule) {
         check_type(type_rule, instance, instance_path, schema_path.field("type"), errors)
       }
@@ -49,9 +65,9 @@ fn validate_at(
       }
       check_number_bounds(rules, instance, instance_path, schema_path, errors)
       check_string_length(rules, instance, instance_path, schema_path, errors)
-      check_array_rules(rules, instance, instance_path, schema_path, errors)
-      check_object_rules(rules, instance, instance_path, schema_path, errors)
-      check_combinations(rules, instance, instance_path, schema_path, errors)
+      check_array_rules(root_schema, rules, instance, instance_path, schema_path, errors)
+      check_object_rules(root_schema, rules, instance, instance_path, schema_path, errors)
+      check_combinations(root_schema, rules, instance, instance_path, schema_path, errors)
     }
     _ =>
       errors.push(
@@ -65,8 +81,75 @@ fn validate_at(
   }
 }
 
+///| 校验本地 `$ref`。
+fn check_ref(
+  root_schema : Json,
+  ref_rule : Json,
+  instance : Json,
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  match ref_rule {
+    String(ref_text) =>
+      match resolve_local_ref(root_schema, ref_text) {
+        Some(target) =>
+          validate_at(root_schema, target, instance, instance_path, schema_path, errors)
+        None =>
+          errors.push(
+            ValidationError::new(
+              instance_path,
+              schema_path,
+              RefNotFound,
+              "local $ref could not be resolved",
+            ),
+          )
+      }
+    _ =>
+      errors.push(
+        ValidationError::new(
+          instance_path,
+          schema_path,
+          InvalidSchema,
+          "`$ref` must be a string",
+        ),
+      )
+  }
+}
+
+///| 解析 `#` 或 `#/path` 形式的本地 JSON Pointer。
+fn resolve_local_ref(root_schema : Json, ref_text : String) -> Json? {
+  if ref_text == "#" {
+    return Some(root_schema)
+  }
+  guard ref_text.strip_prefix("#/") is Some(pointer) else { return None }
+  let mut current = root_schema
+  let mut found = true
+  pointer.split("/").each(segment => {
+    if !found {
+      return
+    }
+    let key = unescape_pointer_segment(segment.to_owned())
+    match current {
+      Object(fields) =>
+        match fields.get(key) {
+          Some(next) => current = next
+          None => found = false
+        }
+      _ => found = false
+    }
+  })
+  if found { Some(current) } else { None }
+}
+
+///| 反转 JSON Pointer 片段转义。
+fn unescape_pointer_segment(segment : String) -> String {
+  segment.replace_all(old="~1", new="/").replace_all(old="~0", new="~")
+}
+
 ///| 校验组合关键字。
 fn check_combinations(
+  root_schema : Json,
   rules : Map[String, Json],
   instance : Json,
   instance_path : Path,
@@ -74,17 +157,17 @@ fn check_combinations(
   errors : Array[ValidationError],
 ) -> Unit {
   if rules.get("allOf") is Some(items) {
-    check_all_of(items, instance, instance_path, schema_path.field("allOf"), errors)
+    check_all_of(root_schema, items, instance, instance_path, schema_path.field("allOf"), errors)
   }
   if rules.get("anyOf") is Some(items) {
-    check_any_of(items, instance, instance_path, schema_path.field("anyOf"), errors)
+    check_any_of(root_schema, items, instance, instance_path, schema_path.field("anyOf"), errors)
   }
   if rules.get("oneOf") is Some(items) {
-    check_one_of(items, instance, instance_path, schema_path.field("oneOf"), errors)
+    check_one_of(root_schema, items, instance, instance_path, schema_path.field("oneOf"), errors)
   }
   if rules.get("not") is Some(item) {
     let nested : Array[ValidationError] = []
-    validate_at(item, instance, instance_path, schema_path.field("not"), nested)
+    validate_at(root_schema, item, instance, instance_path, schema_path.field("not"), nested)
     if nested.is_empty() {
       errors.push(
         ValidationError::new(
@@ -100,6 +183,7 @@ fn check_combinations(
 
 ///| 校验 `allOf`。
 fn check_all_of(
+  root_schema : Json,
   items_rule : Json,
   instance : Json,
   instance_path : Path,
@@ -109,7 +193,7 @@ fn check_all_of(
   match items_rule {
     Array(items) =>
       items.eachi((index, item) => {
-        validate_at(item, instance, instance_path, schema_path.index(index), errors)
+        validate_at(root_schema, item, instance, instance_path, schema_path.index(index), errors)
       })
     _ =>
       errors.push(
@@ -120,6 +204,7 @@ fn check_all_of(
 
 ///| 校验 `anyOf`。
 fn check_any_of(
+  root_schema : Json,
   items_rule : Json,
   instance : Json,
   instance_path : Path,
@@ -128,7 +213,7 @@ fn check_any_of(
 ) -> Unit {
   match items_rule {
     Array(items) => {
-      if items.any(item => validate(item, instance).is_empty()) {
+      if items.any(item => validate_with_root(root_schema, item, instance).is_empty()) {
         return
       }
       errors.push(
@@ -149,6 +234,7 @@ fn check_any_of(
 
 ///| 校验 `oneOf`。
 fn check_one_of(
+  root_schema : Json,
   items_rule : Json,
   instance : Json,
   instance_path : Path,
@@ -159,7 +245,7 @@ fn check_one_of(
     Array(items) => {
       let mut matches = 0
       items.each(item => {
-        if validate(item, instance).is_empty() {
+        if validate_with_root(root_schema, item, instance).is_empty() {
           matches += 1
         }
       })
@@ -183,6 +269,7 @@ fn check_one_of(
 
 ///| 校验对象相关关键字。
 fn check_object_rules(
+  root_schema : Json,
   rules : Map[String, Json],
   instance : Json,
   instance_path : Path,
@@ -197,9 +284,10 @@ fn check_object_rules(
         properties.each((name, property_schema) => {
           known_properties.push(name)
           if fields.get(name) is Some(value) {
-            validate_at(
-              property_schema,
-              value,
+              validate_at(
+                root_schema,
+                property_schema,
+                value,
               instance_path.field(name),
               schema_path.field("properties").field(name),
               errors,
@@ -223,6 +311,7 @@ fn check_object_rules(
   }
   if rules.get("additionalProperties") is Some(additional_rule) {
     check_additional_properties(
+      root_schema,
       additional_rule,
       fields,
       known_properties,
@@ -281,6 +370,7 @@ fn check_required(
 
 ///| 校验 `additionalProperties`。
 fn check_additional_properties(
+  root_schema : Json,
   rule : Json,
   fields : Map[String, Json],
   known_properties : Array[String],
@@ -303,7 +393,7 @@ fn check_additional_properties(
           ),
         )
       True => ()
-      Object(_) => validate_at(rule, value, instance_path.field(name), schema_path, errors)
+      Object(_) => validate_at(root_schema, rule, value, instance_path.field(name), schema_path, errors)
       _ =>
         errors.push(
           ValidationError::new(
@@ -319,6 +409,7 @@ fn check_additional_properties(
 
 ///| 校验数组相关关键字。
 fn check_array_rules(
+  root_schema : Json,
   rules : Map[String, Json],
   instance : Json,
   instance_path : Path,
@@ -358,6 +449,7 @@ fn check_array_rules(
   if rules.get("items") is Some(item_schema) {
     items.eachi((index, item) => {
       validate_at(
+        root_schema,
         item_schema,
         item,
         instance_path.index(index),
