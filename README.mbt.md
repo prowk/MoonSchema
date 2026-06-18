@@ -68,6 +68,18 @@ test {
 }
 ```
 
+## CLI
+
+MoonSchema includes a small inline-JSON command for environments without a file
+IO API:
+
+```bash
+moon run cmd/moonschema -- --schema-json '{"type":"integer"}' --instance-json '42'
+```
+
+It prints `valid` for passing input and a numbered diagnostic report for
+validation failures.
+
 ## Design Notes
 
 MoonSchema collects independent validation errors where possible. Composition

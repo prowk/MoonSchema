@@ -44,3 +44,29 @@ pub fn ValidationError::new(
 pub fn ValidationError::summary(self : ValidationError) -> String {
   "\{self.instance_path.to_pointer()} violates \{self.schema_path.to_pointer()}: \{self.message}"
 }
+
+///| 返回稳定的错误代码文本。
+pub fn ErrorKind::label(self : ErrorKind) -> String {
+  match self {
+    TypeMismatch => "type_mismatch"
+    ConstMismatch => "const_mismatch"
+    EnumMismatch => "enum_mismatch"
+    NumberTooSmall => "number_too_small"
+    NumberTooLarge => "number_too_large"
+    MultipleOfMismatch => "multiple_of_mismatch"
+    StringTooShort => "string_too_short"
+    StringTooLong => "string_too_long"
+    PatternMismatch => "pattern_mismatch"
+    ArrayTooShort => "array_too_short"
+    ArrayTooLong => "array_too_long"
+    UniqueItemsMismatch => "unique_items_mismatch"
+    ContainsMismatch => "contains_mismatch"
+    MissingRequired => "missing_required"
+    AdditionalProperty => "additional_property"
+    ObjectTooSmall => "object_too_small"
+    ObjectTooLarge => "object_too_large"
+    CombinationFailed => "combination_failed"
+    RefNotFound => "ref_not_found"
+    InvalidSchema => "invalid_schema"
+  }
+}
