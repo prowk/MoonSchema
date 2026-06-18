@@ -269,3 +269,19 @@ test "unresolved ref reports structured error" {
   assert_true(errors[0].kind == @MoonSchema.ErrorKind::RefNotFound)
   inspect(errors[0].schema_path.to_pointer(), content="#$ref")
 }
+
+///|
+test "text API parses schema and instance" {
+  let schema_text = #|{"type":"object","required":["name"],"properties":{"name":{"type":"string"}}}
+  let instance_text = #|{"name":"Ada"}
+  let result = @MoonSchema.is_valid_text(schema_text, instance_text)
+  match result {
+    Ok(valid) => assert_true(valid)
+    Err(_) => fail("expected valid JSON input")
+  }
+  let invalid = @MoonSchema.validate_text("{", "{}")
+  match invalid {
+    Ok(_) => fail("expected parse error")
+    Err(message) => inspect(message, content="failed to parse schema JSON")
+  }
+}

@@ -23,6 +23,28 @@ pub fn is_valid(schema : Json, instance : Json) -> Bool {
   validate(schema, instance).is_empty()
 }
 
+///| 从 JSON 文本解析 schema 与实例并执行校验。
+pub fn validate_text(
+  schema_text : String,
+  instance_text : String,
+) -> Result[ValidationResult, String] {
+  let schema = @json.parse(schema_text) catch {
+    _ => return Err("failed to parse schema JSON")
+  }
+  let instance = @json.parse(instance_text) catch {
+    _ => return Err("failed to parse instance JSON")
+  }
+  Ok(validate(schema, instance))
+}
+
+///| 从 JSON 文本快速判断是否通过。
+pub fn is_valid_text(schema_text : String, instance_text : String) -> Result[Bool, String] {
+  match validate_text(schema_text, instance_text) {
+    Ok(errors) => Ok(errors.is_empty())
+    Err(message) => Err(message)
+  }
+}
+
 ///| 在指定路径下递归校验。
 fn validate_at(
   root_schema : Json,
