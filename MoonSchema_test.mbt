@@ -133,3 +133,52 @@ test "array length and uniqueness constraints" {
   assert_true(duplicate[0].kind == @MoonSchema.ErrorKind::UniqueItemsMismatch)
   inspect(duplicate[0].instance_path.to_pointer(), content="#2")
 }
+
+///|
+test "object properties and required are validated" {
+  let schema : Json = {
+    "type": "object",
+    "required": ["name", "age"],
+    "properties": {
+      "name": { "type": "string", "minLength": 1.0 },
+      "age": { "type": "integer", "minimum": 0.0 },
+    },
+  }
+  assert_true(@MoonSchema.is_valid(schema, { "name": "Ada", "age": 36.0 }))
+  let errors = @MoonSchema.validate(schema, { "name": "", "age": -1.0 })
+  inspect(errors.length(), content="2")
+  assert_true(errors[0].kind == @MoonSchema.ErrorKind::StringTooShort)
+  assert_true(errors[1].kind == @MoonSchema.ErrorKind::NumberTooSmall)
+  inspect(errors[0].instance_path.to_pointer(), content="#name")
+  inspect(errors[1].instance_path.to_pointer(), content="#age")
+  let missing = @MoonSchema.validate(schema, { "name": "Ada" })
+  inspect(missing.length(), content="1")
+  assert_true(missing[0].kind == @MoonSchema.ErrorKind::MissingRequired)
+  inspect(missing[0].instance_path.to_pointer(), content="#age")
+}
+
+///|
+test "additionalProperties can reject or validate extras" {
+  let closed_schema : Json = {
+    "properties": { "name": { "type": "string" } },
+    "additionalProperties": false,
+  }
+  let extra = @MoonSchema.validate(closed_schema, { "name": "Ada", "debug": true })
+  inspect(extra.length(), content="1")
+  assert_true(extra[0].kind == @MoonSchema.ErrorKind::AdditionalProperty)
+  inspect(extra[0].instance_path.to_pointer(), content="#debug")
+
+  let typed_extra_schema : Json = {
+    "properties": { "name": { "type": "string" } },
+    "additionalProperties": { "type": "integer" },
+  }
+  assert_true(@MoonSchema.is_valid(typed_extra_schema, { "name": "Ada", "score": 5.0 }))
+  let typed_extra = @MoonSchema.validate(typed_extra_schema, {
+    "name": "Ada",
+    "score": "five",
+  })
+  inspect(typed_extra.length(), content="1")
+  assert_true(typed_extra[0].kind == @MoonSchema.ErrorKind::TypeMismatch)
+  inspect(typed_extra[0].instance_path.to_pointer(), content="#score")
+  inspect(typed_extra[0].schema_path.to_pointer(), content="#additionalProperties/type")
+}

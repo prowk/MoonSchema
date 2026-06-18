@@ -50,6 +50,7 @@ fn validate_at(
       check_number_bounds(rules, instance, instance_path, schema_path, errors)
       check_string_length(rules, instance, instance_path, schema_path, errors)
       check_array_rules(rules, instance, instance_path, schema_path, errors)
+      check_object_rules(rules, instance, instance_path, schema_path, errors)
     }
     _ =>
       errors.push(
@@ -61,6 +62,142 @@ fn validate_at(
         ),
       )
   }
+}
+
+///| 校验对象相关关键字。
+fn check_object_rules(
+  rules : Map[String, Json],
+  instance : Json,
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  guard instance is Object(fields) else { return }
+  let known_properties : Array[String] = []
+  if rules.get("properties") is Some(properties_rule) {
+    match properties_rule {
+      Object(properties) => {
+        properties.each((name, property_schema) => {
+          known_properties.push(name)
+          if fields.get(name) is Some(value) {
+            validate_at(
+              property_schema,
+              value,
+              instance_path.field(name),
+              schema_path.field("properties").field(name),
+              errors,
+            )
+          }
+        })
+      }
+      _ =>
+        errors.push(
+          ValidationError::new(
+            instance_path,
+            schema_path.field("properties"),
+            InvalidSchema,
+            "`properties` must be an object",
+          ),
+        )
+    }
+  }
+  if rules.get("required") is Some(required_rule) {
+    check_required(required_rule, fields, instance_path, schema_path.field("required"), errors)
+  }
+  if rules.get("additionalProperties") is Some(additional_rule) {
+    check_additional_properties(
+      additional_rule,
+      fields,
+      known_properties,
+      instance_path,
+      schema_path.field("additionalProperties"),
+      errors,
+    )
+  }
+}
+
+///| 校验 `required` 列表。
+fn check_required(
+  required_rule : Json,
+  fields : Map[String, Json],
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  match required_rule {
+    Array(names) =>
+      names.eachi((index, item) => {
+        match item {
+          String(name) =>
+            if !fields.contains(name) {
+              errors.push(
+                ValidationError::new(
+                  instance_path.field(name),
+                  schema_path.index(index),
+                  MissingRequired,
+                  "required property is missing",
+                ),
+              )
+            }
+          _ =>
+            errors.push(
+              ValidationError::new(
+                instance_path,
+                schema_path.index(index),
+                InvalidSchema,
+                "`required` entries must be strings",
+              ),
+            )
+        }
+      })
+    _ =>
+      errors.push(
+        ValidationError::new(
+          instance_path,
+          schema_path,
+          InvalidSchema,
+          "`required` must be an array of strings",
+        ),
+      )
+  }
+}
+
+///| 校验 `additionalProperties`。
+fn check_additional_properties(
+  rule : Json,
+  fields : Map[String, Json],
+  known_properties : Array[String],
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  fields.each((name, value) => {
+    if known_properties.contains(name) {
+      return
+    }
+    match rule {
+      False =>
+        errors.push(
+          ValidationError::new(
+            instance_path.field(name),
+            schema_path,
+            AdditionalProperty,
+            "additional property is not allowed",
+          ),
+        )
+      True => ()
+      Object(_) => validate_at(rule, value, instance_path.field(name), schema_path, errors)
+      _ =>
+        errors.push(
+          ValidationError::new(
+            instance_path.field(name),
+            schema_path,
+            InvalidSchema,
+            "`additionalProperties` must be a boolean or schema object",
+          ),
+        )
+    }
+  })
 }
 
 ///| 校验数组相关关键字。
