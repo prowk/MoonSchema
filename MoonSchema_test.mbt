@@ -87,3 +87,17 @@ test "exclusive number bounds" {
   assert_false(@MoonSchema.is_valid(schema, 0.0.to_json()))
   assert_false(@MoonSchema.is_valid(schema, 10.0.to_json()))
 }
+
+///|
+test "string length bounds" {
+  let schema : Json = { "type": "string", "minLength": 2.0, "maxLength": 4.0 }
+  assert_true(@MoonSchema.is_valid(schema, "abc".to_json()))
+  let short = @MoonSchema.validate(schema, "a".to_json())
+  inspect(short.length(), content="1")
+  assert_true(short[0].kind == @MoonSchema.ErrorKind::StringTooShort)
+  inspect(short[0].schema_path.to_pointer(), content="#minLength")
+  let long = @MoonSchema.validate(schema, "abcde".to_json())
+  inspect(long.length(), content="1")
+  assert_true(long[0].kind == @MoonSchema.ErrorKind::StringTooLong)
+  inspect(long[0].schema_path.to_pointer(), content="#maxLength")
+}

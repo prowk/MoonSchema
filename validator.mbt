@@ -48,6 +48,7 @@ fn validate_at(
         check_enum(options, instance, instance_path, schema_path.field("enum"), errors)
       }
       check_number_bounds(rules, instance, instance_path, schema_path, errors)
+      check_string_length(rules, instance, instance_path, schema_path, errors)
     }
     _ =>
       errors.push(
@@ -58,6 +59,80 @@ fn validate_at(
           "schema must be an object or a boolean",
         ),
       )
+  }
+}
+
+///| 校验字符串长度关键字。
+fn check_string_length(
+  rules : Map[String, Json],
+  instance : Json,
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  guard instance is String(value) else { return }
+  if rules.get("minLength") is Some(limit) {
+    check_length_limit(
+      limit,
+      value.length(),
+      instance_path,
+      schema_path.field("minLength"),
+      StringTooShort,
+      current => limit_value => current < limit_value,
+      "`minLength` must be a non-negative integer",
+      "string is shorter than minLength",
+      errors,
+    )
+  }
+  if rules.get("maxLength") is Some(limit) {
+    check_length_limit(
+      limit,
+      value.length(),
+      instance_path,
+      schema_path.field("maxLength"),
+      StringTooLong,
+      current => limit_value => current > limit_value,
+      "`maxLength` must be a non-negative integer",
+      "string is longer than maxLength",
+      errors,
+    )
+  }
+}
+
+///| 校验长度类整数边界。
+fn check_length_limit(
+  limit_rule : Json,
+  current : Int,
+  instance_path : Path,
+  schema_path : Path,
+  kind : ErrorKind,
+  violates_factory : (Int) -> (Int) -> Bool,
+  invalid_message : String,
+  message : String,
+  errors : Array[ValidationError],
+) -> Unit {
+  match non_negative_integer(limit_rule) {
+    Some(limit) =>
+      if violates_factory(current)(limit) {
+        errors.push(ValidationError::new(instance_path, schema_path, kind, message))
+      }
+    None =>
+      errors.push(
+        ValidationError::new(instance_path, schema_path, InvalidSchema, invalid_message),
+      )
+  }
+}
+
+///| 从 JSON number 中提取非负整数。
+fn non_negative_integer(value : Json) -> Int? {
+  match value {
+    Number(n, ..) =>
+      if n >= 0.0 && n == @double.trunc(n) {
+        Some(n.to_int())
+      } else {
+        None
+      }
+    _ => None
   }
 }
 
