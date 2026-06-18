@@ -103,6 +103,16 @@ test "string length bounds" {
 }
 
 ///|
+test "string pattern constraint" {
+  let schema : Json = { "type": "string", "pattern": "^[a-z]+-[0-9]+$" }
+  assert_true(@MoonSchema.is_valid(schema, "ticket-42".to_json()))
+  let errors = @MoonSchema.validate(schema, "Ticket 42".to_json())
+  inspect(errors.length(), content="1")
+  assert_true(errors[0].kind == @MoonSchema.ErrorKind::PatternMismatch)
+  inspect(errors[0].schema_path.to_pointer(), content="#pattern")
+}
+
+///|
 test "array items are recursively validated" {
   let schema : Json = { "type": "array", "items": { "type": "integer" } }
   assert_true(@MoonSchema.is_valid(schema, [1.0, 2.0, 3.0]))

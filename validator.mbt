@@ -65,6 +65,7 @@ fn validate_at(
       }
       check_number_bounds(rules, instance, instance_path, schema_path, errors)
       check_string_length(rules, instance, instance_path, schema_path, errors)
+      check_string_pattern(rules, instance, instance_path, schema_path, errors)
       check_array_rules(root_schema, rules, instance, instance_path, schema_path, errors)
       check_object_rules(root_schema, rules, instance, instance_path, schema_path, errors)
       check_combinations(root_schema, rules, instance, instance_path, schema_path, errors)
@@ -493,6 +494,54 @@ fn check_unique_items(
           schema_path,
           InvalidSchema,
           "`uniqueItems` must be a boolean",
+        ),
+      )
+  }
+}
+
+///| 校验字符串 `pattern` 关键字。
+fn check_string_pattern(
+  rules : Map[String, Json],
+  instance : Json,
+  instance_path : Path,
+  schema_path : Path,
+  errors : Array[ValidationError],
+) -> Unit {
+  guard instance is String(value) else { return }
+  guard rules.get("pattern") is Some(pattern_rule) else { return }
+  match pattern_rule {
+    String(pattern) => {
+      let regex = @string.Regex::new(pattern) catch {
+        _ => {
+          errors.push(
+            ValidationError::new(
+              instance_path,
+              schema_path.field("pattern"),
+              InvalidSchema,
+              "`pattern` is not a valid regular expression",
+            ),
+          )
+          return
+        }
+      }
+      if regex.execute(value) is None {
+        errors.push(
+          ValidationError::new(
+            instance_path,
+            schema_path.field("pattern"),
+            PatternMismatch,
+            "string does not match pattern",
+          ),
+        )
+      }
+    }
+    _ =>
+      errors.push(
+        ValidationError::new(
+          instance_path,
+          schema_path.field("pattern"),
+          InvalidSchema,
+          "`pattern` must be a string",
         ),
       )
   }

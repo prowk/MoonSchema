@@ -7,6 +7,7 @@ pub(all) enum ErrorKind {
   NumberTooLarge
   StringTooShort
   StringTooLong
+  PatternMismatch
   ArrayTooShort
   ArrayTooLong
   UniqueItemsMismatch
